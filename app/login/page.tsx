@@ -72,7 +72,10 @@ export default function LoginPage() {
           </div>
 
           {/* Submit */}
-          <button className="w-full py-3 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 transition">
+          <button
+            onClick={() => router.push('/login-success')}
+            className="w-full py-3 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 transition"
+          >
             Đăng nhập
           </button>
         </div>
