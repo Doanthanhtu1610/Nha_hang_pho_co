@@ -124,6 +124,7 @@ export default function DashboardPage() {
         }
 
         const data = await res.json();
+        console.log(data);
         // Expecting an array of table objects
         if (Array.isArray(data)) setOrders(data);
         else setOrders(data?.tables || null);

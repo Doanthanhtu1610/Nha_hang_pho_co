@@ -36,6 +36,7 @@ export default function TableOrdersPage() {
         }
 
         const data = await res.json();
+        console.log(data);
         const list = Array.isArray(data) ? data : data?.tables || [];
 
         // match by id or number
@@ -45,7 +46,7 @@ export default function TableOrdersPage() {
           setLoading(false);
           return;
         }
-
+        console.log(match);
         setTable(match);
       } catch (e) {
         console.error(e);

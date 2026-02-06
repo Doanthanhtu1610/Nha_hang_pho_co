@@ -27,9 +27,10 @@ interface Props {
   status: Status;
   guests?: number;
   onView?: () => void;
+  onPayment?: () => void;
 }
 
-export default function TableCard({ name, status, guests, onView }: Props) {
+export default function TableCard({ name, status, guests, onView, onPayment }: Props) {
   const style = STATUS_STYLE[status];
 
   return (
@@ -53,7 +54,10 @@ export default function TableCard({ name, status, guests, onView }: Props) {
           <button onClick={onView} className="flex-1 py-1.5 rounded-lg bg-white text-sm border hover:bg-gray-50 text-gray-400">
             Xem đơn
           </button>
-          <button className="flex-1 py-1.5 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600">
+          <button
+            onClick={() => onPayment?.()}
+            className="flex-1 py-1.5 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600"
+          >
             Thanh toán
           </button>
         </div>

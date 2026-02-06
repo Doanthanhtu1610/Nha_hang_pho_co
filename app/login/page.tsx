@@ -109,14 +109,30 @@ export default function LoginPage() {
                   return;
                 }
 
-                // store token and redirect to dashboard
+                const roleRaw =
+                  data?.role ??
+                  data?.user?.role ??
+                  data?.user?.type ??
+                  data?.user?.position ??
+                  data?.user?.job ??
+                  null;
+
+                const userName =
+                  data?.username ??
+                  data?.user?.username ??
+                  data?.user?.name ??
+                  data?.fullName ??
+                  '';
+
                 try {
                   localStorage.setItem('accessToken', token);
+                  if (userName) localStorage.setItem('userName', String(userName));
+                  if (roleRaw) localStorage.setItem('userRole', String(roleRaw));
                 } catch (e) {
                   // ignore storage errors
                 }
 
-                router.push('/dashboard');
+                router.push('/login-success');
               } catch (err) {
                 setError('Lỗi kết nối tới server');
               } finally {

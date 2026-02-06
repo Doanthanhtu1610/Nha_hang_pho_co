@@ -3,11 +3,14 @@
 import { ArrowLeft, Wifi, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 
 export default function NotificationsPage() {
   const router = useRouter();
   const [newOrders, setNewOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmingMap, setConfirmingMap] = useState<Record<string, boolean>>({});
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -98,7 +101,7 @@ export default function NotificationsPage() {
     }
   };
 
-  const handleConfirm = (notificationId: any) => {
+  const removeNotification = (notificationId: any) => {
     setNewOrders((prev) => {
       const updated = prev.filter((o) => o.notificationId !== notificationId);
       try {
@@ -106,6 +109,65 @@ export default function NotificationsPage() {
       } catch (e) {}
       return updated;
     });
+  };
+
+  const handleConfirm = async (order: any) => {
+    const notificationId = order?.notificationId;
+    const orderId = order?.id;
+    const key = String(notificationId ?? orderId ?? '');
+    if (!orderId) {
+      alert('Không tìm thấy mã đơn để xác nhận');
+      return;
+    }
+
+    setConfirmingMap((prev) => ({ ...prev, [key]: true }));
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      if (!token) {
+        alert('Vui lòng đăng nhập lại');
+        return;
+      }
+
+      const url = `http://localhost:3000/orders/${orderId}/next`;
+      const doRequest = async (method: 'POST' | 'PATCH') => {
+        return await fetch(url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      };
+
+      // Backend có thể implement "next" bằng POST hoặc PATCH.
+      let res = await doRequest('POST');
+      if (!res.ok) {
+        const txt = await res.text();
+        // Trường hợp backend không có route POST nhưng có PATCH (thường gặp)
+        const shouldTryPatch =
+          res.status === 404 &&
+          (txt.includes('Cannot POST') || txt.includes('Not Found') || txt.includes('/orders/'));
+        if (shouldTryPatch) {
+          res = await doRequest('PATCH');
+        } else {
+          throw new Error(txt || 'Không thể xác nhận đơn');
+        }
+      }
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Không thể xác nhận đơn');
+      }
+
+      removeNotification(notificationId);
+    } catch (e: any) {
+      alert('Lỗi: ' + (e?.message || 'Lỗi kết nối'));
+    } finally {
+      setConfirmingMap((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
   };
 
   const getItemCount = (order: any) => {
@@ -131,13 +193,7 @@ export default function NotificationsPage() {
               Trực tuyến
             </div>
             <button
-              onClick={() => {
-                try {
-                  localStorage.removeItem('accessToken');
-                  localStorage.removeItem('newWaiterOrders');
-                } catch (e) {}
-                window.location.href = 'http://10.191.32.119:3001/';
-              }}
+              onClick={() => setShowLogoutModal(true)}
               className="text-gray-600 hover:text-gray-800"
             >
               <LogOut size={18} />
@@ -193,16 +249,30 @@ export default function NotificationsPage() {
                     Xem
                   </button>
                   <button
-                    onClick={() => handleConfirm(order.notificationId)}
+                    onClick={() => handleConfirm(order)}
+                    disabled={!!confirmingMap[String(order.notificationId ?? order.id ?? '')]}
                     className="flex-1 py-2 px-3 bg-orange-500 text-white rounded-lg text-sm font-medium"
                   >
-                    Xác nhận
+                    {confirmingMap[String(order.notificationId ?? order.id ?? '')] ? 'Đang xác nhận...' : 'Xác nhận'}
                   </button>
                 </div>
               </div>
             ))}
         </div>
       </div>
+
+      <LogoutConfirmModal
+        open={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={() => {
+          try {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('userName');
+            localStorage.removeItem('newWaiterOrders');
+          } catch (e) {}
+          window.location.href = '/';
+        }}
+      />
     </div>
   );
 }
