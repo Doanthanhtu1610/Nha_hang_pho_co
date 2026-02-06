@@ -26,9 +26,10 @@ interface Props {
   name: string;
   status: Status;
   guests?: number;
+  onView?: () => void;
 }
 
-export default function TableCard({ name, status, guests }: Props) {
+export default function TableCard({ name, status, guests, onView }: Props) {
   const style = STATUS_STYLE[status];
 
   return (
@@ -49,7 +50,7 @@ export default function TableCard({ name, status, guests }: Props) {
 
       {status !== 'empty' && (
         <div className="mt-3 flex gap-2">
-          <button className="flex-1 py-1.5 rounded-lg bg-white text-sm border hover:bg-gray-50 text-gray-400">
+          <button onClick={onView} className="flex-1 py-1.5 rounded-lg bg-white text-sm border hover:bg-gray-50 text-gray-400">
             Xem đơn
           </button>
           <button className="flex-1 py-1.5 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600">

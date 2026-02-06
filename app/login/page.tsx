@@ -7,6 +7,10 @@ import { useRouter } from 'next/navigation';
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   return (
     <div className="min-h-screen bg-[#FFF7ED] flex items-center justify-center px-4">
@@ -51,6 +55,8 @@ export default function LoginPage() {
           <input
             type="text"
             placeholder="Nhập tài khoản"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             className="mt-1 mb-4 w-full px-4 py-2 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
 
@@ -60,6 +66,8 @@ export default function LoginPage() {
             <input
               type={showPassword ? 'text' : 'password'}
               placeholder="Nhập mật khẩu"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-400"
             />
             <button
@@ -71,12 +79,54 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {error && (
+            <div className="text-sm text-red-600 mb-3">{error}</div>
+          )}
+
           {/* Submit */}
           <button
-            onClick={() => router.push('/login-success')}
-            className="w-full py-3 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 transition"
+            onClick={async () => {
+              setError('');
+              setLoading(true);
+              try {
+                const res = await fetch('http://localhost:3000/auth/login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ username, password: password }),
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                  setError(data?.message || 'Đăng nhập thất bại');
+                  setLoading(false);
+                  return;
+                }
+
+                const token = data?.access_token || data?.token || null;
+                if (!token) {
+                  setError('Không nhận được access token');
+                  setLoading(false);
+                  return;
+                }
+
+                // store token and redirect to dashboard
+                try {
+                  localStorage.setItem('accessToken', token);
+                } catch (e) {
+                  // ignore storage errors
+                }
+
+                router.push('/dashboard');
+              } catch (err) {
+                setError('Lỗi kết nối tới server');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+            className="w-full py-3 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 transition disabled:opacity-60"
           >
-            Đăng nhập
+            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </button>
         </div>
       </div>
