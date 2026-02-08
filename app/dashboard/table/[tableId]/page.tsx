@@ -3,6 +3,8 @@
 import { ArrowLeft, Wifi, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { fetchApi } from '@/lib/api';
+import { redirectToLoginIfNeeded, clearSession } from '@/lib/auth';
 
 export default function TableOrdersPage() {
   const params = useParams();
@@ -18,15 +20,9 @@ export default function TableOrdersPage() {
       setError('');
       setLoading(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (!token) {
-          if (typeof window !== 'undefined') window.location.href = 'http://10.191.32.119:3001/';
-          return;
-        }
+        if (redirectToLoginIfNeeded()) return;
 
-        const res = await fetch('http://localhost:3000/tables/orders', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi('/tables/orders');
 
         if (!res.ok) {
           const txt = await res.text();
@@ -72,16 +68,7 @@ export default function TableOrdersPage() {
             </div>
           </div>
         </div>
-        <button
-          onClick={() => {
-            try {
-              localStorage.removeItem('accessToken');
-              localStorage.removeItem('newWaiterOrders');
-            } catch (e) {}
-            window.location.href = 'http://10.191.32.119:3001/';
-          }}
-          className="text-gray-600 hover:text-gray-800"
-        >
+        <button onClick={clearSession} className="text-gray-600 hover:text-gray-800">
           <LogOut size={18} />
         </button>
             </div>

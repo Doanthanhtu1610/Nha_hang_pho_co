@@ -4,6 +4,8 @@ import { ArrowLeft, Wifi, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { fetchApi, API_BASE_URL } from '@/lib/api';
+import { getAccessToken, clearSession } from '@/lib/auth';
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -15,7 +17,7 @@ export default function NotificationsPage() {
   useEffect(() => {
     setLoading(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const token = getAccessToken();
 
       // Load new orders from localStorage
       const stored = localStorage.getItem('newWaiterOrders');
@@ -45,7 +47,7 @@ export default function NotificationsPage() {
         try {
           const mod = await import('socket.io-client');
           const { io } = mod;
-          const socket = io('http://localhost:3000', { auth: { token } });
+          const socket = io(API_BASE_URL, { auth: { token } });
           socket.emit('join_waiter_room');
 
           socket.on('waiter_new_order', (order: any) => {
@@ -122,20 +124,13 @@ export default function NotificationsPage() {
 
     setConfirmingMap((prev) => ({ ...prev, [key]: true }));
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-      if (!token) {
+      if (!getAccessToken()) {
         alert('Vui lòng đăng nhập lại');
         return;
       }
 
-      const url = `http://localhost:3000/orders/${orderId}/next`;
       const doRequest = async (method: 'POST' | 'PATCH') => {
-        return await fetch(url, {
-          method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        return await fetchApi(`/orders/${orderId}/next`, { method });
       };
 
       // Backend có thể implement "next" bằng POST hoặc PATCH.
@@ -264,14 +259,7 @@ export default function NotificationsPage() {
       <LogoutConfirmModal
         open={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
-        onConfirm={() => {
-          try {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('userName');
-            localStorage.removeItem('newWaiterOrders');
-          } catch (e) {}
-          window.location.href = '/';
-        }}
+        onConfirm={clearSession}
       />
     </div>
   );

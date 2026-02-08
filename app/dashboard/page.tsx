@@ -5,6 +5,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import TableCard from '@/components/TableCard';
 import FloorTabs from '@/components/FloorTabs';
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { fetchApi, API_BASE_URL } from '@/lib/api';
+import { getAccessToken, redirectToLoginIfNeeded, clearSession } from '@/lib/auth';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -13,6 +16,7 @@ export default function DashboardPage() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<any[] | null>(null);
   const [newOrders, setNewOrders] = useState<any[]>([]);
 
@@ -60,17 +64,14 @@ export default function DashboardPage() {
       setFetchError('');
       setLoadingOrders(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (!token) {
-          if (typeof window !== 'undefined') window.location.href = 'http://10.191.32.119:3001/';
-          return;
-        }
+        if (redirectToLoginIfNeeded()) return;
+        const token = getAccessToken();
 
         // Connect with socket.io-client if available and emit join_waiter_room
         try {
           const mod = await import('socket.io-client');
           const { io } = mod;
-          socket = io('http://localhost:3000', { auth: { token } });
+          socket = io(API_BASE_URL, { auth: { token } });
           socket.emit('join_waiter_room');
 
           // Load any stored new orders from localStorage
@@ -112,9 +113,7 @@ export default function DashboardPage() {
         }
 
         // Fetch tables/orders
-        const res = await fetch('http://localhost:3000/tables/orders', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi('/tables/orders');
 
         if (!res.ok) {
           const body = await res.text();
@@ -170,13 +169,7 @@ export default function DashboardPage() {
               )}
             </button>
             <button
-              onClick={() => {
-                try {
-                  localStorage.removeItem('accessToken');
-                  localStorage.removeItem('newWaiterOrders');
-                } catch (e) {}
-                window.location.href = 'http://10.191.32.119:3001/';
-              }}
+              onClick={() => setShowLogoutModal(true)}
               className="text-gray-600 hover:text-gray-800"
             >
               <LogOut size={18} />
@@ -265,6 +258,12 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <LogoutConfirmModal
+        open={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={clearSession}
+      />
     </div>
   );
 }

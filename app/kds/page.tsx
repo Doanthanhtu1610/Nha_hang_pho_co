@@ -4,22 +4,11 @@ import { ChevronRight, LogOut, Wifi } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { fetchApi, API_BASE_URL } from '@/lib/api';
+import { getAccessToken, redirectToLoginIfNeeded, clearSession } from '@/lib/auth';
+import type { KdsCard, KdsStatus } from '@/types';
 
-type Area = 'Bếp' | 'Bar';
-type Status = 'Mới' | 'Đang làm' | 'Hoàn tất';
-
-type KdsCard = {
-  id: string;
-  tableCode: string; // e.g. B02
-  tableName: string; // e.g. B02
-  minutesAgo: number;
-  lines: string[];
-  status: Status;
-  area: Area;
-  hasNote?: boolean;
-};
-
-const mapBackendStatusToColumn = (rawStatus: unknown): Status => {
+const mapBackendStatusToColumn = (rawStatus: unknown): KdsStatus => {
   const s = String(rawStatus || '').toUpperCase();
   if (!s) return 'Mới';
   if (['NEW', 'WAITING', 'PENDING'].includes(s)) return 'Mới';
@@ -42,13 +31,41 @@ const computeMinutesAgo = (createdAt?: string, updatedAt?: string): number => {
   }
 };
 
+/** Map raw order (API hoặc socket) sang KdsCard – tất cả hiển thị bên Bếp */
+const mapOrderToKdsCard = (o: any): KdsCard => {
+  const tableNumber = o?.table?.number ?? o?.table?.code ?? '—';
+
+  const items = Array.isArray(o?.items) ? o.items : [];
+  const lines = items.map((it: any) => {
+    const qty = it?.quantity ?? 1;
+    const name = it?.product?.name ?? 'Món';
+    return `${qty}× ${name}`;
+  });
+
+  const hasNote = items.some((it: any) => !!it?.note);
+
+  const rawStatus = o?.status != null ? String(o.status) : undefined;
+
+  return {
+    id: String(o.id ?? Math.random()),
+    tableCode: String(tableNumber),
+    tableName: String(tableNumber),
+    minutesAgo: computeMinutesAgo(o.createdAt, o.updatedAt),
+    lines,
+    status: mapBackendStatusToColumn(o.status),
+    hasNote,
+    rawStatus,
+  };
+};
+
 export default function KdsPage() {
   const router = useRouter();
-  const [area, setArea] = useState<Area>('Bar');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [cards, setCards] = useState<KdsCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  /** Đơn hàng mới vừa được xác nhận – hiển thị thông báo */
+  const [newOrderNotification, setNewOrderNotification] = useState<KdsCard | null>(null);
 
   useEffect(() => {
     let socket: any;
@@ -56,26 +73,28 @@ export default function KdsPage() {
       setError('');
       setLoading(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (!token) {
-          if (typeof window !== 'undefined') window.location.href = '/';
-          return;
-        }
+        if (redirectToLoginIfNeeded()) return;
+        const token = getAccessToken();
 
-        // 1. Kết nối socket và join_chef_room
+        // 1. Kết nối socket, join_chef_room và lắng nghe đơn mới xác nhận (notifyChefNewConfirmedOrder)
         try {
           const mod = await import('socket.io-client');
           const { io } = mod;
-          socket = io('http://localhost:3000', { auth: { token } });
+          socket = io(API_BASE_URL, { auth: { token } });
           socket.emit('join_chef_room');
+
+          socket.on('chef_new_confirmed_order', (order: any) => {
+            const newCard = mapOrderToKdsCard(order);
+            setCards((prev) => [newCard, ...prev]);
+            setNewOrderNotification(newCard);
+            setTimeout(() => setNewOrderNotification(null), 5000);
+          });
         } catch (e) {
           console.warn('socket.io not available for chef room', e);
         }
 
         // 2. Gọi API lấy danh sách đơn cho KDS
-        const res = await fetch('http://localhost:3000/orders/tables', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi('/orders/tables');
 
         if (!res.ok) {
           const txt = await res.text();
@@ -85,34 +104,7 @@ export default function KdsPage() {
 
         const data = await res.json();
         const list: any[] = Array.isArray(data) ? data : data?.orders || [];
-
-        const mapped: KdsCard[] = list.map((o: any) => {
-          const tableNumber = o?.table?.number || o?.table?.code || '—';
-          const areaFromTable: Area =
-            String(tableNumber).toUpperCase().startsWith('B') || String(tableNumber).toUpperCase().startsWith('BAR')
-              ? 'Bar'
-              : 'Bếp';
-
-          const items = Array.isArray(o?.items) ? o.items : [];
-          const lines = items.map((it: any) => {
-            const qty = it?.quantity ?? 1;
-            const name = it?.product?.name || 'Món';
-            return `${qty}× ${name}`;
-          });
-
-          const hasNote = items.some((it: any) => !!it?.note);
-
-          return {
-            id: String(o.id ?? Math.random()),
-            tableCode: String(tableNumber),
-            tableName: String(tableNumber),
-            minutesAgo: computeMinutesAgo(o.createdAt, o.updatedAt),
-            lines,
-            status: mapBackendStatusToColumn(o.status),
-            area: areaFromTable,
-            hasNote,
-          } as KdsCard;
-        });
+        const mapped: KdsCard[] = list.map((o: any) => mapOrderToKdsCard(o));
 
         setCards(mapped);
       } catch (e) {
@@ -125,29 +117,25 @@ export default function KdsPage() {
 
     return () => {
       try {
-        if (socket && socket.disconnect) socket.disconnect();
+        if (socket) {
+          socket.off('chef_new_confirmed_order');
+          if (socket.disconnect) socket.disconnect();
+        }
       } catch (e) {}
     };
   }, []);
 
-  const filtered = cards.filter((c) => c.area === area);
-  const byStatus = (s: Status) => filtered.filter((c) => c.status === s);
+  /** Tất cả đơn hiển thị bên Bếp, không lọc theo Bar */
+  const byStatus = (s: KdsStatus) => cards.filter((c) => c.status === s);
 
-  const colNew = byStatus('Mới');
+  /** Cột "Mới" chỉ hiển thị đơn có trạng thái CONFIRMED (backend dùng COMFIRMED) */
+  const isConfirmed = (raw?: string) => {
+    const s = String(raw || '').toUpperCase();
+    return s === 'CONFIRMED' || s === 'COMFIRMED';
+  };
+  const colNew = cards.filter((c) => c.status === 'Mới' && isConfirmed(c.rawStatus));
   const colDoing = byStatus('Đang làm');
   const colDone = byStatus('Hoàn tất');
-
-  const Pill = ({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) => (
-    <button
-      onClick={onClick}
-      className={[
-        'px-3 py-1.5 rounded-full text-sm font-semibold transition',
-        active ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
 
   const Column = ({
     title,
@@ -222,9 +210,38 @@ export default function KdsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="px-4 pt-4">
+        {newOrderNotification && (
+          <div
+            className="mb-4 p-4 rounded-xl bg-green-50 border border-green-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300"
+            role="alert"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-green-800 text-sm">🔔 Đơn hàng mới được xác nhận</p>
+                <p className="mt-1 text-green-700 text-sm">
+                  Bàn <span className="font-semibold">{newOrderNotification.tableName}</span>
+                  {newOrderNotification.lines.length > 0 && (
+                    <span className="text-green-600">
+                      — {newOrderNotification.lines.slice(0, 3).join(', ')}
+                      {newOrderNotification.lines.length > 3 && '...'}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewOrderNotification(null)}
+                className="text-green-600 hover:text-green-800 text-sm font-medium shrink-0"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-bold text-gray-900">{area}</div>
+            <div className="text-lg font-bold text-gray-900">Bếp</div>
             <div className="text-sm text-gray-500 -mt-0.5">KDS Board</div>
           </div>
 
@@ -239,15 +256,6 @@ export default function KdsPage() {
           </div>
         </div>
 
-        <div className="mt-4 flex items-center gap-2">
-          <Pill active={area === 'Bếp'} onClick={() => setArea('Bếp')}>
-            Bếp
-          </Pill>
-          <Pill active={area === 'Bar'} onClick={() => setArea('Bar')}>
-            Bar
-          </Pill>
-        </div>
-
         <div className="mt-4 flex gap-3">
           <Column title="Mới" count={colNew.length} tint="blue" items={colNew} />
           <Column title="Đang làm" count={colDoing.length} tint="orange" items={colDoing} />
@@ -258,16 +266,7 @@ export default function KdsPage() {
       <LogoutConfirmModal
         open={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
-        onConfirm={() => {
-          try {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('userName');
-            localStorage.removeItem('userRole');
-            localStorage.removeItem('newWaiterOrders');
-            localStorage.removeItem('paymentRequests');
-          } catch (e) {}
-          window.location.href = '/';
-        }}
+        onConfirm={clearSession}
       />
     </div>
   );

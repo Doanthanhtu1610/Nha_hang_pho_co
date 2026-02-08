@@ -4,6 +4,8 @@ import { Wallet, Wifi, LogOut, LayoutGrid, Clock, CheckCircle } from 'lucide-rea
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { fetchApi, API_BASE_URL } from '@/lib/api';
+import { getAccessToken, redirectToLoginIfNeeded, clearSession } from '@/lib/auth';
 
 const STORAGE_KEY = 'paymentRequests';
 
@@ -36,11 +38,8 @@ export default function PaymentPage() {
   useEffect(() => {
     let socket: any;
     (async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-      if (!token) {
-        if (typeof window !== 'undefined') window.location.href = '/';
-        return;
-      }
+      if (redirectToLoginIfNeeded()) return;
+      const token = getAccessToken();
 
       try {
         const pr = localStorage.getItem(STORAGE_KEY);
@@ -53,7 +52,7 @@ export default function PaymentPage() {
       try {
         const mod = await import('socket.io-client');
         const { io } = mod;
-        socket = io('http://localhost:3000', { auth: { token } });
+        socket = io(API_BASE_URL, { auth: { token } });
         socket.emit('join_waiter_room');
         socket.on('waiter_notification', (data: { type?: string; tableNumber?: string | number; message?: string }) => {
           if (data?.type !== 'SERVER_REQUEST' || data.tableNumber == null) return;
@@ -75,9 +74,7 @@ export default function PaymentPage() {
       }
 
       try {
-        const res = await fetch('http://localhost:3000/tables/orders', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi('/tables/orders');
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data?.tables || [];
@@ -270,15 +267,7 @@ export default function PaymentPage() {
       <LogoutConfirmModal
         open={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
-        onConfirm={() => {
-          try {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('userName');
-            localStorage.removeItem('newWaiterOrders');
-            localStorage.removeItem(STORAGE_KEY);
-          } catch (e) {}
-          window.location.href = '/';
-        }}
+        onConfirm={clearSession}
       />
     </div>
   );

@@ -3,6 +3,8 @@
 import { ArrowLeft, Wifi, Edit3, Trash2, CheckCircle, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { fetchApi } from '@/lib/api';
+import { redirectToLoginIfNeeded, getAccessToken, clearSession } from '@/lib/auth';
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -26,15 +28,9 @@ export default function OrderDetailPage() {
       setError('');
       setLoading(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (!token) {
-          if (typeof window !== 'undefined') window.location.href = 'http://10.191.32.119:3001/';
-          return;
-        }
+        if (redirectToLoginIfNeeded()) return;
 
-        const res = await fetch('http://localhost:3000/tables/orders', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi('/tables/orders');
 
         if (!res.ok) {
           const txt = await res.text();
@@ -98,11 +94,7 @@ export default function OrderDetailPage() {
             </span>
             <button
               onClick={() => {
-                try {
-                  localStorage.removeItem('accessToken');
-                  localStorage.removeItem('newWaiterOrders');
-                } catch (e) {}
-                window.location.href = 'http://10.191.32.119:3001/';
+                clearSession();
               }}
               className="text-gray-600 hover:text-gray-800"
             >
@@ -132,10 +124,7 @@ export default function OrderDetailPage() {
                 setShowAddModal(true);
                 setProductsLoading(true);
                 try {
-                  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-                  const res = await fetch('http://localhost:3000/products', {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                  });
+                  const res = await fetchApi('/products');
                   if (res.ok) {
                     const data = await res.json();
                     setProducts(Array.isArray(data) ? data : data?.products || []);
@@ -271,8 +260,7 @@ export default function OrderDetailPage() {
               <button
                 onClick={async () => {
                   try {
-                    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-                    if (!token) {
+                    if (!getAccessToken()) {
                       alert('Vui lòng đăng nhập lại');
                       return;
                     }
@@ -286,12 +274,9 @@ export default function OrderDetailPage() {
                       tableNumber: String(table?.number || tableIdParam),
                     };
 
-                    const res = await fetch(`http://localhost:3000/orders/${orderIdParam}`, {
+                    const res = await fetchApi(`/orders/${orderIdParam}`, {
                       method: 'PATCH',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                      },
+                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(requestBody),
                     });
 

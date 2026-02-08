@@ -3,28 +3,11 @@
 import { ArrowLeft, Wifi } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { fetchApi } from '@/lib/api';
+import { getAccessToken, redirectToLoginIfNeeded } from '@/lib/auth';
+import type { OrderDetail } from '@/types';
 
 type Area = 'Bếp' | 'Bar';
-
-interface OrderItem {
-  quantity: number;
-  note?: string | null;
-  product?: {
-    name?: string;
-  } | null;
-}
-
-interface OrderDetail {
-  id: number | string;
-  status?: string;
-  table?: {
-    id?: number | string;
-    number?: string;
-  } | null;
-  items?: OrderItem[];
-  createdAt?: string;
-  updatedAt?: string;
-}
 
 const mapStatusLabel = (raw?: string) => {
   const s = String(raw || '').toUpperCase();
@@ -78,15 +61,9 @@ export default function KdsOrderDetailPage() {
       setError('');
       setLoading(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (!token) {
-          if (typeof window !== 'undefined') window.location.href = '/';
-          return;
-        }
+        if (redirectToLoginIfNeeded()) return;
 
-        const res = await fetch(`http://localhost:3000/orders/${orderIdParam}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi(`/orders/${orderIdParam}`);
 
         if (!res.ok) {
           const txt = await res.text();
@@ -214,20 +191,13 @@ export default function KdsOrderDetailPage() {
               if (!orderIdParam) return;
               setStarting(true);
               try {
-                const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-                if (!token) {
+                if (!getAccessToken()) {
                   alert('Vui lòng đăng nhập lại');
                   return;
                 }
 
-                const url = `http://localhost:3000/orders/${orderIdParam}/next`;
                 const doRequest = async (method: 'POST' | 'PATCH') => {
-                  return await fetch(url, {
-                    method,
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                    },
-                  });
+                  return await fetchApi(`/orders/${orderIdParam}/next`, { method });
                 };
 
                 // Thử POST trước, nếu backend không hỗ trợ POST thì fallback sang PATCH
@@ -249,16 +219,9 @@ export default function KdsOrderDetailPage() {
                   throw new Error(txt || 'Không thể cập nhật trạng thái đơn');
                 }
 
-                // Sau khi bắt đầu thành công, load lại đơn để cập nhật trạng thái
-                try {
-                  const refreshed = await fetch(`http://localhost:3000/orders/${orderIdParam}`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                  });
-                  if (refreshed.ok) {
-                    const d = await refreshed.json();
-                    setOrder(d);
-                  }
-                } catch (e) {}
+                // Quay lại trang tổng quan KDS để danh sách tự load lại và cập nhật
+                router.push('/kds');
+                return;
               } catch (e: any) {
                 alert('Lỗi: ' + (e?.message || 'Không thể bắt đầu đơn'));
               } finally {

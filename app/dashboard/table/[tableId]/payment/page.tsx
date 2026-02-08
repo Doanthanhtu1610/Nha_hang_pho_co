@@ -3,6 +3,8 @@
 import { ArrowLeft, Wifi, Wallet, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { fetchApi } from '@/lib/api';
+import { redirectToLoginIfNeeded, getAccessToken } from '@/lib/auth';
 
 function formatCurrency(v: number) {
   return Number(v || 0).toLocaleString('vi-VN') + ' ₫';
@@ -27,15 +29,9 @@ export default function TablePaymentPage() {
       setError('');
       setLoading(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        if (!token) {
-          if (typeof window !== 'undefined') window.location.href = '/';
-          return;
-        }
+        if (redirectToLoginIfNeeded()) return;
 
-        const res = await fetch('http://localhost:3000/tables/orders', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetchApi('/tables/orders');
 
         if (!res.ok) {
           setError('Không thể tải dữ liệu');
@@ -169,8 +165,7 @@ export default function TablePaymentPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 space-y-3">
           <button
             onClick={async () => {
-              const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-              if (!token) return;
+              if (!getAccessToken()) return;
               if (orderIds.length === 0) {
                 setError('Không có đơn nào để thanh toán');
                 return;
@@ -179,12 +174,9 @@ export default function TablePaymentPage() {
               setError('');
               try {
                 for (const orderId of orderIds) {
-                  const res = await fetch(`http://localhost:3000/orders/${orderId}/checkout`, {
+                  const res = await fetchApi(`/orders/${orderId}/checkout`, {
                     method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${token}`,
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                   });
                   if (!res.ok) {
                     const body = await res.text();

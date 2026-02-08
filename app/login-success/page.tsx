@@ -3,6 +3,7 @@
 import { Users, Wifi } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { getAccessToken } from '@/lib/auth';
 
 export default function LoginSuccessPage() {
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function LoginSuccessPage() {
       const stored = typeof window !== 'undefined' ? localStorage.getItem('userRole') : null;
       if (stored) return String(stored);
 
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const token = getAccessToken();
       if (!token) return '';
 
       const parts = token.split('.');
@@ -43,8 +44,8 @@ export default function LoginSuccessPage() {
   useEffect(() => {
     try {
       const name = typeof window !== 'undefined' ? localStorage.getItem('userName') : null;
-      setUserName(name || '');
-    } catch (e) {
+      setUserName(name ?? '');
+    } catch {
       setUserName('');
     }
   }, []);
